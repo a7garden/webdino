@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dino Quiz Adventure</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        
+        <div id="hud">
+            <div class="hud-item" id="dino-count">🦖 공룡: 0/10</div>
+            <div class="hud-item" id="rare-count">⭐ 레어: 0/5</div>
+            <div class="hud-item" id="portal-count">🔮 포탈: 0/3</div>
+        </div>
+        
+        <div id="crosshair">+</div>
+        
+        <div id="interaction-prompt" class="hidden">
+            <span>[E] 공룡과 대화하기</span>
+        </div>
+        
+        <div id="quiz-dialog" class="hidden">
+            <div class="quiz-header">
+                <span id="dino-name">공룡 이름</span>
+            </div>
+            <div class="quiz-question" id="quiz-question">질문이 여기에 표시됩니다.</div>
+            <div class="quiz-answers" id="quiz-answers"></div>
+            <div class="quiz-feedback hidden" id="quiz-feedback"></div>
+        </div>
+        
+        <div id="inventory-panel" class="hidden">
+            <div class="inventory-header">
+                <h2>인벤토리</h2>
+                <button id="close-inventory">[X]</button>
+            </div>
+            <div class="inventory-grid" id="inventory-grid"></div>
+            <div class="inventory-info">
+                <p>아이템 10개 → 합성 → 레어 아이템</p>
+                <p>레어 5개 → 포탈 아이템</p>
+            </div>
+        </div>
+        
+        <div id="portal-panel" class="hidden">
+            <div class="portal-header">
+                <h2>스테이션 이동</h2>
+                <button id="close-portal">[X]</button>
+            </div>
+            <div class="portal-buttons">
+                <button class="portal-btn" data-station="land">🌍 땅 스테이션</button>
+                <button class="portal-btn" data-station="water">🌊 물속 스테이션</button>
+                <button class="portal-btn" data-station="sky">☁️ 하늘 스테이션</button>
+            </div>
+            <div class="portal-info">레어 아이템 5개 필요</div>
+        </div>
+        
+        <div id="angel-screen" class="hidden">
+            <div class="angel-content">
+                <div class="angel-wings">🪽</div>
+                <div class="angel-halo">👼</div>
+                <h1>천사 변신!</h1>
+                <p>모든 스테이션을 자유롭게 이동!</p>
+            </div>
+        </div>
+        
+        <div id="video-placeholder" class="hidden">
+            <div class="video-content" id="video-content">
+                <div class="glow-orb"></div>
+                <h2>레어 아이템 동영상</h2>
+                <p>(클릭하여 닫기)</p>
+            </div>
+        </div>
+        
+        <div id="station-transition" class="hidden">
+            <div class="transition-content">
+                <h1 id="transition-name">스테이션 이름</h1>
+                <p>이동 중...</p>
+            </div>
+        </div>
+        
+        <div id="controls-help">
+            <span>[WASD] 이동</span>
+            <span>[마우스] 시점</span>
+            <span>[E] 대화</span>
+            <span>[I] 인벤토리</span>
+            <span>[P] 포탈</span>
+        </div>
+        
+        <div id="start-screen">
+            <div class="start-content">
+                <h1>🦕 Dino Quiz Adventure 🦖</h1>
+                <p>공룡 퀴즈를 풀고 아이템을 모으자!</p>
+                <button id="start-button">게임 시작</button>
+                <div class="game-info">
+                    <h3>게임 방법</h3>
+                    <ul>
+                        <li>WASD로 이동, 마우스로 시점 전환</li>
+                        <li>공룡에게 가까이 가고 [E]키를 누르세요</li>
+                        <li>퀴즈를 맞추면 아이템을 얻습니다</li>
+                        <li>아이템 10개 → 합성 → 레어 아이템</li>
+                        <li>레어 5개 → 포탈 아이템</li>
+                        <li>포탈 3개 → 천사 변신!</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div id="win-screen" class="hidden">
+            <div class="win-content">
+                <h1>🎉 축하합니다! 🎉</h1>
+                <div class="angel-wings-large">🪽</div>
+                <p>천사 케릭터로 변신했습니다!</p>
+                <button id="restart-button">다시 시작</button>
+            </div>
+        </div>
+    </div>
+    
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module">
+    import * as THREE from 'three';
+    import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+    
+    console.log('[Game] Loading...');
+    
+    class Renderer {
+        constructor(canvas) {
+            console.log('[Renderer] Init');
+            this.canvas = canvas;
+            this.scene = new THREE.Scene();
+            this.scene.background = new THREE.Color(0x87CEEB);
+            
+            this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+            this.camera.position.set(0, 5, 15);
+            
+            this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            this.renderer.shadowMap.enabled = true;
+            this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            this.renderer.setClearColor(0x87CEEB, 1);
+            this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            this.renderer.toneMappingExposure = 1.0;
+            
+            const ambient = new THREE.AmbientLight(0xffffff, 1.2);
+            this.scene.add(ambient);
+            
+            const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+            sun.position.set(50, 100, 50);
+            sun.castShadow = true;
+            sun.shadow.mapSize.width = 2048;
+            sun.shadow.mapSize.height = 2048;
+            sun.shadow.camera.near = 0.5;
+            sun.shadow.camera.far = 500;
+            sun.shadow.camera.left = -100;
+            sun.shadow.camera.right = 100;
+            sun.shadow.camera.top = 100;
+            sun.shadow.camera.bottom = -100;
+            this.scene.add(sun);
+            
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+            fillLight.position.set(-30, 50, -30);
+            this.scene.add(fillLight);
+            
+            window.addEventListener('resize', () => {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+        
+        getScene() { return this.scene; }
+        getCamera() { return this.camera; }
+        render() { this.renderer.render(this.scene, this.camera); }
+    }
+    
+    class Player3D {
+        constructor(scene) {
+            console.log('[Player3D] Init');
+            this.group = new THREE.Group();
+            this.group.name = 'Player';
+            this.isAngel = false;
+            
+            const bodyGeo = new THREE.CapsuleGeometry(0.4, 1.2, 8, 16);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x4488ff, roughness: 0.7 });
+            this.body = new THREE.Mesh(bodyGeo, bodyMat);
+            this.body.position.y = 1.2;
+            this.body.castShadow = true;
+            this.group.add(this.body);
+    
+            const headGeo = new THREE.SphereGeometry(0.3, 16, 16);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xffcc99, roughness: 0.8 });
+            this.head = new THREE.Mesh(headGeo, headMat);
+            this.head.position.y = 2.1;
+            this.group.add(this.head);
+    
+            const eyeGeo = new THREE.SphereGeometry(0.05, 8, 8);
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+            const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+            leftEye.position.set(-0.1, 2.15, 0.25);
+            this.group.add(leftEye);
+            const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+            rightEye.position.set(0.1, 2.15, 0.25);
+            this.group.add(rightEye);
+    
+            const armGeo = new THREE.CapsuleGeometry(0.1, 0.6, 4, 8);
+            const armMat = new THREE.MeshStandardMaterial({ color: 0x4488ff, roughness: 0.7 });
+            this.leftArm = new THREE.Mesh(armGeo, armMat);
+            this.leftArm.position.set(-0.6, 1.4, 0);
+            this.group.add(this.leftArm);
+            this.rightArm = new THREE.Mesh(armGeo, armMat);
+            this.rightArm.position.set(0.6, 1.4, 0);
+            this.group.add(this.rightArm);
+    
+            const legGeo = new THREE.CapsuleGeometry(0.12, 0.7, 4, 8);
+            const legMat = new THREE.MeshStandardMaterial({ color: 0x334466, roughness: 0.7 });
+            this.leftLeg = new THREE.Mesh(legGeo, legMat);
+            this.leftLeg.position.set(-0.2, 0.4, 0);
+            this.group.add(this.leftLeg);
+            this.rightLeg = new THREE.Mesh(legGeo, legMat);
+            this.rightLeg.position.set(0.2, 0.4, 0);
+            this.group.add(this.rightLeg);
+    
+            const wingGeo = new THREE.PlaneGeometry(2, 1);
+            const wingMat = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
+            this.leftWing = new THREE.Mesh(wingGeo, wingMat);
+            this.leftWing.position.set(-1, 2.2, 0);
+            this.leftWing.rotation.y = Math.PI / 2;
+            this.leftWing.visible = false;
+            this.group.add(this.leftWing);
+            this.rightWing = new THREE.Mesh(wingGeo, wingMat);
+            this.rightWing.position.set(1, 2.2, 0);
+            this.rightWing.rotation.y = -Math.PI / 2;
+            this.rightWing.visible = false;
+            this.group.add(this.rightWing);
+    
+            const haloGeo = new THREE.TorusGeometry(0.4, 0.05, 8, 32);
+            const haloMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.8 });
+            this.halo = new THREE.Mesh(haloGeo, haloMat);
+            this.halo.position.y = 2.6;
+            this.halo.rotation.x = Math.PI / 2;
+            this.halo.visible = false;
+            this.group.add(this.halo);
+    
+            this.group.position.set(0, 1, 0);
+            scene.add(this.group);
+        }
+    
+        transformToAngel() {
+            this.isAngel = true;
+            this.leftWing.visible = true;
+            this.rightWing.visible = true;
+            this.halo.visible = true;
+            this.body.material.emissive = new THREE.Color(0x444400);
+            this.body.material.emissiveIntensity = 0.3;
+        }
+    
+        update(deltaTime) {
+            if (this.isAngel) {
+                const time = Date.now() * 0.002;
+                this.leftWing.rotation.z = Math.sin(time) * 0.3;
+                this.rightWing.rotation.z = -Math.sin(time) * 0.3;
+                this.halo.position.y = 2.6 + Math.sin(time * 2) * 0.05;
+            }
+        }
+    
+        getPosition() { return this.group.position; }
+        setPosition(x, y, z) { this.group.position.set(x, y, z); }
+    }
+    
+    class Dino3D {
+        constructor(scene, type, position, onLoaded) {
+            this.group = new THREE.Group();
+            this.type = type;
+            this.group.position.copy(position);
+            this.loaded = false;
+            this.mixer = null;
+            this.isAnimated = false;
+            
+            this.moveTimer = 0;
+            this.moveInterval = 2 + Math.random() * 3;
+            this.targetX = position.x;
+            this.targetZ = position.z;
+            this.moveSpeed = 0.5 + Math.random() * 0.5;
+            this.wanderRange = 3 + Math.random() * 2;
+            this.baseY = position.y;
+            this.breatheOffset = Math.random() * Math.PI * 2;
+            
+            this.createFallbackModel();
+            this.loaded = true;
+            if (onLoaded) onLoaded(this);
+            scene.add(this.group);
+            
+            const modelFiles = {
+                velociraptor: 'assets/models/Raptor_Animated_FBX.fbx',
+                stegasaurus: 'assets/models/Stegasaurus_20K.fbx',
+                pachycephalasaurus: 'assets/models/Pachycephalasaurus_24K.fbx'
+            };
+            
+            const modelFile = modelFiles[type];
+            if (!modelFile) return;
+            
+            const textureMap = {
+                velociraptor: { color: 'assets/models/Raptor_PatternA_Albedo.png', normal: 'assets/models/Raptor_Normal.png' },
+                stegasaurus: { color: 'assets/models/Material_Base_color.png', normal: 'assets/models/Material_Normal_OpenGL.png' },
+                pachycephalasaurus: { color: 'assets/models/Other_AlbedoPachy.png', normal: 'assets/models/Pachycephalasaurus_Normal.png' }
+            };
+            const tex = textureMap[type];
+            
+            try {
+                const loader = new FBXLoader();
+                const texLoader = new THREE.TextureLoader();
+                loader.load(modelFile, (fbx) => {
+                    while (this.group.children.length > 0) {
+                        this.group.remove(this.group.children[0]);
+                    }
+                    fbx.scale.setScalar(0.01);
+                    fbx.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                            if (child.material) {
+                                const mats = Array.isArray(child.material) ? child.material : [child.material];
+                                mats.forEach(mat => {
+                                    mat.flatShading = false;
+                                    mat.side = THREE.FrontSide;
+                                    if (tex && tex.color) {
+                                        texLoader.load(tex.color, (texture) => {
+                                            texture.colorSpace = THREE.SRGBColorSpace;
+                                            mat.map = texture;
+                                            mat.needsUpdate = true;
+                                        });
+                                    }
+                                    mat.needsUpdate = true;
+                                });
+                            }
+                        }
+                    });
+                    this.group.add(fbx);
+                    this.loaded = true;
+                    if (fbx.animations && fbx.animations.length > 0) {
+                        this.mixer = new THREE.AnimationMixer(fbx);
+                        this.mixer.clipAction(fbx.animations[0]).play();
+                        this.isAnimated = true;
+                    } else {
+                        this.isAnimated = false;
+                    }
+                    console.log('[Dino3D] Loaded model:', type, 'animated:', this.isAnimated);
+                }, undefined, (error) => {
+                    console.warn('[Dino3D] Model load failed, using fallback:', type);
+                });
+            } catch (e) {
+                console.error('[Dino3D] FBXLoader error:', e);
+            }
+        }
+        
+        createFallbackModel() {
+            const colors = { velociraptor: 0x228B22, stegasaurus: 0x4A4A4A, pachycephalasaurus: 0x8B4513 };
+            const color = colors[this.type] || 0x888888;
+            
+            const bodyGeo = new THREE.CapsuleGeometry(0.5, 1.5, 8, 16);
+            const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.7 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.rotation.z = Math.PI / 2;
+            body.position.y = 1.2;
+            body.castShadow = true;
+            this.group.add(body);
+    
+            const headGeo = new THREE.BoxGeometry(0.8, 0.6, 0.6);
+            const head = new THREE.Mesh(headGeo, bodyMat.clone());
+            head.position.set(1.2, 1.5, 0);
+            head.castShadow = true;
+            this.group.add(head);
+    
+            const eyeGeo = new THREE.SphereGeometry(0.08, 8, 8);
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+            leftEye.position.set(1.5, 1.6, 0.3);
+            this.group.add(leftEye);
+            const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+            rightEye.position.set(1.5, 1.6, -0.3);
+            this.group.add(rightEye);
+    
+            const tailGeo = new THREE.ConeGeometry(0.3, 2.5, 8);
+            const tail = new THREE.Mesh(tailGeo, bodyMat.clone());
+            tail.rotation.z = -Math.PI / 2;
+            tail.position.set(-1.5, 1.2, 0);
+            tail.castShadow = true;
+            this.group.add(tail);
+    
+            const legGeo = new THREE.CapsuleGeometry(0.12, 0.6, 4, 8);
+            [[0.4, 0.4, 0.3], [0.4, 0.4, -0.3], [-0.5, 0.4, 0.3], [-0.5, 0.4, -0.3]].forEach(pos => {
+                const leg = new THREE.Mesh(legGeo, bodyMat.clone());
+                leg.position.set(...pos);
+                leg.castShadow = true;
+                this.group.add(leg);
+            });
+        }
+        
+update(deltaTime) {
+            if (this.mixer) this.mixer.update(deltaTime);
+            
+            this.moveTimer += deltaTime;
+            if (this.moveTimer >= this.moveInterval) {
+                this.moveTimer = 0;
+                this.moveInterval = 2 + Math.random() * 3;
+                this.targetX = this.group.position.x + (Math.random() - 0.5) * this.wanderRange;
+                this.targetZ = this.group.position.z + (Math.random() - 0.5) * this.wanderRange;
+            }
+            
+            const dx = this.targetX - this.group.position.x;
+            const dz = this.targetZ - this.group.position.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            
+            if (dist > 0.1) {
+                this.group.position.x += (dx / dist) * this.moveSpeed * deltaTime;
+                this.group.position.z += (dz / dist) * this.moveSpeed * deltaTime;
+                const targetRotY = Math.atan2(dx, dz);
+                this.group.rotation.y = THREE.MathUtils.lerp(this.group.rotation.y, targetRotY, 0.05);
+            }
+            
+            this.group.position.y = this.baseY + Math.sin(Date.now() * 0.002 + this.breatheOffset) * 0.05;
+        }
+        
+        getPosition() { return this.group.position; }
+    }
+    
+    class Ground3D {
+        constructor(scene, station) {
+            const configs = { land: { color: 0x3A5F0B }, water: { color: 0x006994 }, sky: { color: 0x87CEEB } };
+            const cfg = configs[station] || configs.land;
+            
+            const groundGeo = new THREE.PlaneGeometry(200, 200);
+            const groundMat = new THREE.MeshStandardMaterial({ color: cfg.color, roughness: 1.0 });
+            this.ground = new THREE.Mesh(groundGeo, groundMat);
+            this.ground.rotation.x = -Math.PI / 2;
+            this.ground.receiveShadow = true;
+            scene.add(this.ground);
+    
+            for (let i = 0; i < 30; i++) {
+                const tree = new THREE.Group();
+                const trunk = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.3, 0.5, 4, 8),
+                    new THREE.MeshStandardMaterial({ color: 0x4A3728 })
+                );
+                trunk.position.y = 2;
+                tree.add(trunk);
+                const leaves = new THREE.Mesh(
+                    new THREE.ConeGeometry(2, 4, 8),
+                    new THREE.MeshStandardMaterial({ color: 0x228B22 })
+                );
+                leaves.position.y = 5;
+                tree.add(leaves);
+                const x = (Math.random() - 0.5) * 100;
+                const z = (Math.random() - 0.5) * 100;
+                tree.position.set(x, 0, z);
+                tree.scale.setScalar(0.8 + Math.random() * 0.6);
+                scene.add(tree);
+            }
+        }
+    }
+    
+    class PortalSystem {
+        constructor(scene) {
+            this.scene = scene;
+            this.portals = [];
+            this.createPortals();
+        }
+    
+        createPortals() {
+            const portalData = [
+                { station: 'land', position: { x: 0, y: 0, z: -40 }, color: 0x8B4513 },
+                { station: 'water', position: { x: 40, y: 0, z: 0 }, color: 0x006994 },
+                { station: 'sky', position: { x: -40, y: 0, z: 0 }, color: 0x87CEEB }
+            ];
+            portalData.forEach(p => {
+                const portal = new THREE.Group();
+                portal.position.set(p.position.x, p.position.y + 2, p.position.z);
+                const torus = new THREE.Mesh(
+                    new THREE.TorusGeometry(2.5, 0.4, 16, 32),
+                    new THREE.MeshStandardMaterial({ color: p.color, emissive: p.color, emissiveIntensity: 0.6, transparent: true, opacity: 0.9 })
+                );
+                torus.rotation.y = Math.PI / 2;
+                portal.add(torus);
+                const inner = new THREE.Mesh(
+                    new THREE.CircleGeometry(2.3, 32),
+                    new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })
+                );
+                inner.rotation.y = Math.PI / 2;
+                portal.add(inner);
+                this.scene.add(portal);
+                this.portals.push({ group: portal, torus, station: p.station, position: p.position });
+            });
+        }
+    
+        update(time) {
+            this.portals.forEach((p, i) => {
+                p.torus.rotation.z = time * 0.5 + i * 2;
+            });
+        }
+    
+        checkPortalInteraction(playerPos) {
+            for (const portal of this.portals) {
+                const dx = portal.position.x - playerPos.x;
+                const dz = portal.position.z - playerPos.z;
+                if (Math.sqrt(dx * dx + dz * dz) < 4) return portal.station;
+            }
+            return null;
+        }
+    }
+    
+    class PlayerController {
+        constructor(camera, player) {
+            this.camera = camera;
+            this.player = player;
+            this.moveSpeed = 8;
+            this.sprintSpeed = 15;
+            this.jumpSpeed = 12;
+            this.gravity = 25;
+            this.lookSpeed = 0.002;
+            this.velocity = new THREE.Vector3();
+            this.direction = new THREE.Vector3();
+            this.isGrounded = true;
+            this.eulerX = 0;
+            this.eulerY = 0;
+            this.keys = { forward: false, backward: false, left: false, right: false, jump: false, sprint: false, flyUp: false, flyDown: false };
+            
+            document.addEventListener('keydown', (e) => this.onKeyDown(e));
+            document.addEventListener('keyup', (e) => this.onKeyUp(e));
+            document.addEventListener('mousemove', (e) => this.onMouseMove(e));
+            document.addEventListener('click', () => document.body.requestPointerLock());
+        }
+    
+        onKeyDown(e) {
+            switch (e.code) {
+                case 'KeyW': case 'ArrowUp': this.keys.forward = true; break;
+                case 'KeyS': case 'ArrowDown': this.keys.backward = true; break;
+                case 'KeyA': case 'ArrowLeft': this.keys.left = true; break;
+                case 'KeyD': case 'ArrowRight': this.keys.right = true; break;
+                case 'Space': this.player.isAngel ? this.keys.flyUp = true : this.keys.jump = true; break;
+                case 'ShiftLeft': this.keys.sprint = true; break;
+                case 'ControlLeft': if (this.player.isAngel) this.keys.flyDown = true; break;
+            }
+        }
+    
+        onKeyUp(e) {
+            switch (e.code) {
+                case 'KeyW': case 'ArrowUp': this.keys.forward = false; break;
+                case 'KeyS': case 'ArrowDown': this.keys.backward = false; break;
+                case 'KeyA': case 'ArrowLeft': this.keys.left = false; break;
+                case 'KeyD': case 'ArrowRight': this.keys.right = false; break;
+                case 'Space': this.keys.flyUp = false; break;
+                case 'ShiftLeft': this.keys.sprint = false; break;
+                case 'ControlLeft': this.keys.flyDown = false; break;
+            }
+        }
+    
+        onMouseMove(e) {
+            if (document.pointerLockElement) {
+                this.eulerY -= e.movementX * this.lookSpeed;
+                this.eulerX -= e.movementY * this.lookSpeed;
+                this.eulerX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.eulerX));
+                this.camera.quaternion.setFromEuler(new THREE.Euler(this.eulerX, this.eulerY, 0, 'YXZ'));
+            }
+        }
+    
+        update(deltaTime) {
+            const speed = this.keys.sprint ? this.sprintSpeed : this.moveSpeed;
+            this.direction.z = Number(this.keys.forward) - Number(this.keys.backward);
+            this.direction.x = Number(this.keys.right) - Number(this.keys.left);
+            this.direction.normalize();
+            
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+            forward.y = 0; forward.normalize();
+            const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
+            right.y = 0; right.normalize();
+            
+            this.velocity.x = (forward.x * this.direction.z + right.x * this.direction.x) * speed;
+            this.velocity.z = (forward.z * this.direction.z + right.z * this.direction.x) * speed;
+            
+            if (this.player.isAngel) {
+                this.velocity.y = 0;
+                if (this.keys.flyUp) this.velocity.y = this.jumpSpeed;
+                if (this.keys.flyDown) this.velocity.y = -this.jumpSpeed;
+            } else {
+                if (this.keys.jump && this.isGrounded) { this.velocity.y = this.jumpSpeed; this.isGrounded = false; }
+                if (!this.isGrounded) this.velocity.y -= this.gravity * deltaTime;
+                const playerPos = this.player.getPosition();
+                if (playerPos.y <= 1) { playerPos.y = 1; this.velocity.y = 0; this.isGrounded = true; }
+            }
+            
+            const playerPos = this.player.getPosition();
+            playerPos.x += this.velocity.x * deltaTime;
+            playerPos.y += this.velocity.y * deltaTime;
+            playerPos.z += this.velocity.z * deltaTime;
+            playerPos.x = Math.max(-95, Math.min(95, playerPos.x));
+            playerPos.z = Math.max(-95, Math.min(95, playerPos.z));
+            this.camera.position.copy(playerPos);
+            this.camera.position.y += 2;
+        }
+    }
+    
+    class DinosaurManager {
+        constructor() {
+            this.dinosaurs = [];
+            this.dinoTypes = ['velociraptor', 'stegasaurus', 'pachycephalasaurus'];
+            this.spawnDinosaurs();
+        }
+    
+        spawnDinosaurs() {
+            const spawnPoints = [
+                { x: 10, y: 0, z: -15 }, { x: -20, y: 0, z: 10 }, { x: 15, y: 0, z: 20 },
+                { x: -25, y: 0, z: -20 }, { x: 30, y: 0, z: -5 }, { x: -10, y: 0, z: 30 },
+                { x: 5, y: 0, z: -30 }, { x: -30, y: 0, z: 15 }, { x: 25, y: 0, z: 25 }, { x: -15, y: 0, z: -10 }
+            ];
+            spawnPoints.forEach((pos, i) => {
+                const type = this.dinoTypes[i % this.dinoTypes.length];
+                this.dinosaurs.push({
+                    type, name: this.getDinoName(type, i), position: pos,
+                    quizzes: this.generateQuizzes(), isActive: true
+                });
+            });
+        }
+    
+        getDinoName(type, index) {
+            const names = { velociraptor: ['래피', '스위프트', '크리프트', '론'], stegasaurus: ['스테고', '플레이트', '소러스', '에코'], pachycephalasaurus: ['패키', '헤드', '본', '스매쉬'] };
+            return (names[type] || names.velociraptor)[index % 4];
+        }
+    
+generateQuizzes() {
+            const allQuizzes = [
+                { q: '공룡은 언제地球에 나타났나요?', a: ['2억 3천만 년 전', '6천 6백만 년 전', '1천만 년 전', '5억 년 전'], c: 0 },
+                { q: '가장 큰 공룡은?', a: ['티라노사우루스', '아르젠티노사우루스', '브라키오사우루스', '밀로사우루스'], c: 1 },
+                { q: '공룡의 분류는?', a: ['포유류', '파충류', '조류', '양서류'], c: 1 },
+                { q: '티라노사우루스의 식성은?', a: ['초식', '육식', '잡식', '청소'], c: 1 },
+                { q: '공룡의 마지막 후손은?', a: ['포유류', '조류', '파충류', '양서류'], c: 1 },
+                { q: '세 개의 뿔이 있는 공룡은?', a: ['티라노사우루스', '트리케라톱스', '스테고사우루스', '파키세팔로사우루스'], c: 1 },
+                { q: '날개가 있는 공룡은?', a: ['티라노사우루스', '브라키오사우루스', '프테라노돈', '스테고사우루스'], c: 2 },
+                { q: '공룡의 종류는 약 몇 종?', a: ['약 500종', '약 1000종', '약 2000종', '약 10000종'], c: 1 },
+                { q: '가장 똑똑한 공룡은?', a: ['티라노사우루스', '스트로보사우루스', '트리오벡스', '파키세팔로사우루스'], c: 2 },
+                { q: '공룡의 조상은?', a: ['조류', '파충류', '양서류', '포유류'], c: 1 }
+            ];
+            return [...allQuizzes].sort(() => Math.random() - 0.5).slice(0, 3);
+        }
+    
+        getDinosaurs() { return this.dinosaurs; }
+        getDinoAtPosition(pos, threshold = 5) {
+            return this.dinosaurs.find(d => {
+                if (!d.isActive) return false;
+                const dx = d.position.x - pos.x, dz = d.position.z - pos.z;
+                return Math.sqrt(dx * dx + dz * dz) < threshold;
+            });
+        }
+        resetDinosaurs() { this.dinosaurs.forEach(d => d.isActive = true); }
+    }
+    
+    class DinosaurUI {
+        constructor() {
+            this.dialog = document.getElementById('quiz-dialog');
+            this.nameEl = document.getElementById('dino-name');
+            this.questionEl = document.getElementById('quiz-question');
+            this.answersEl = document.getElementById('quiz-answers');
+            this.feedbackEl = document.getElementById('quiz-feedback');
+            this.onQuizComplete = null;
+        }
+    
+        showDialog(dino) {
+            if (document.pointerLockElement) document.exitPointerLock();
+            const crosshair = document.getElementById('crosshair');
+            if (crosshair) crosshair.style.display = 'none';
+            this.nameEl.textContent = `🦖 ${dino.name}`;
+            this.showQuestion(dino.quizzes[0]);
+            this.dialog.classList.remove('hidden');
+            this.dialog.style.display = 'flex';
+            this.dialog.style.flexDirection = 'column';
+            this.dialog.style.alignItems = 'center';
+            this.dialog.style.justifyContent = 'center';
+            setTimeout(() => {
+                const firstBtn = this.dialog.querySelector('.quiz-answer');
+                if (firstBtn) firstBtn.focus();
+            }, 100);
+        }
+    
+        showQuestion(quiz) {
+            this.questionEl.textContent = quiz.q;
+            this.answersEl.innerHTML = '';
+            quiz.a.forEach((answer, i) => {
+                const btn = document.createElement('button');
+                btn.className = 'quiz-answer';
+                btn.textContent = `${i + 1}. ${answer}`;
+                btn.onclick = () => this.checkAnswer(i, quiz.c);
+                this.answersEl.appendChild(btn);
+            });
+            this.feedbackEl.classList.add('hidden');
+        }
+    
+        checkAnswer(selected, correct) {
+            const isCorrect = selected === correct;
+            this.feedbackEl.textContent = isCorrect ? '🎉 정답!' : '❌ 오답';
+            this.feedbackEl.classList.remove('hidden');
+            this.feedbackEl.style.color = isCorrect ? '#00ff00' : '#ff0000';
+            const buttons = this.answersEl.querySelectorAll('button');
+            buttons.forEach((btn, i) => {
+                btn.disabled = true;
+                if (i === correct) btn.style.background = '#00ff00';
+                else if (i === selected) btn.style.background = '#ff0000';
+            });
+            setTimeout(() => {
+                this.hideDialog();
+                if (this.onQuizComplete) this.onQuizComplete(isCorrect);
+            }, 1500);
+        }
+    
+        hideDialog() { 
+            this.dialog.classList.add('hidden'); 
+            const crosshair = document.getElementById('crosshair');
+            if (crosshair) crosshair.style.display = 'block';
+        }
+    }
+    
+    class InventorySystem {
+        constructor() {
+            this.items = []; this.rareItems = []; this.portalItems = [];
+            this.maxItems = 10; this.rareToPortal = 5; this.portalToAngel = 3;
+            this.onItemCollected = null; this.onRareCreated = null; this.onPortalCreated = null; this.onAngelTransformation = null;
+            this.isAngelMode = false;
+        }
+    
+        addItem() {
+            this.items.push({ type: 'dino', id: Date.now(), icon: '🦖' });
+            if (this.onItemCollected) this.onItemCollected(this.items.length);
+            if (this.items.length >= this.maxItems) this.synthesizeRare();
+            return this.items.length;
+        }
+    
+        synthesizeRare() {
+            if (this.items.length < this.maxItems) return null;
+            this.items = [];
+            const rare = { type: 'rare', id: Date.now(), icon: ['⭐', '💎', '🌟', '✨', '🔮'][Math.floor(Math.random() * 5)] };
+            this.rareItems.push(rare);
+            if (this.onRareCreated) this.onRareCreated(rare);
+            if (this.rareItems.length >= this.rareToPortal) this.createPortal();
+            return rare;
+        }
+    
+        createPortal() {
+            if (this.rareItems.length < this.rareToPortal) return null;
+            this.rareItems = [];
+            const stations = ['land', 'water', 'sky'];
+            const existing = this.portalItems.map(p => p.station);
+            const available = stations.filter(s => !existing.includes(s));
+            if (available.length === 0) { this.transformToAngel(); return null; }
+            const station = available[0];
+            const portal = { type: 'portal', station, id: Date.now(), icon: { land: '🌍', water: '🌊', sky: '☁️' }[station] };
+            this.portalItems.push(portal);
+            if (this.onPortalCreated) this.onPortalCreated(portal);
+            return portal;
+        }
+    
+        transformToAngel() { if (this.onAngelTransformation) this.onAngelTransformation(); }
+        getCounts() { return { items: this.items.length, rare: this.rareItems.length, portal: this.portalItems.length }; }
+        reset() { this.items = []; this.rareItems = []; this.portalItems = []; this.isAngelMode = false; }
+    }
+    
+    class UIManager {
+        constructor() {
+            this.hud = {
+                dinoCount: document.getElementById('dino-count'),
+                rareCount: document.getElementById('rare-count'),
+                portalCount: document.getElementById('portal-count')
+            };
+            this.interactionPrompt = document.getElementById('interaction-prompt');
+            this.promptEl = this.interactionPrompt;
+            this.startScreen = document.getElementById('start-screen');
+            this.winScreen = document.getElementById('win-screen');
+            this.portalPanel = document.getElementById('portal-panel');
+            this.portalBtns = document.querySelectorAll('.portal-btn');
+            this.onStartGame = null; this.onPortalSelect = null; this.onRestart = null;
+            this.bindEvents();
+        }
+    
+        bindEvents() {
+            const startBtn = document.getElementById('start-button');
+            if (startBtn) startBtn.addEventListener('click', () => { this.hideStartScreen(); if (this.onStartGame) this.onStartGame(); });
+            const restartBtn = document.getElementById('restart-button');
+            if (restartBtn) restartBtn.addEventListener('click', () => { this.hideWinScreen(); if (this.onRestart) this.onRestart(); });
+            this.portalBtns.forEach(btn => btn.addEventListener('click', () => { if (this.onPortalSelect) this.onPortalSelect(btn.dataset.station); }));
+            document.getElementById('close-portal')?.addEventListener('click', () => this.hidePortalPanel());
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'KeyI') {
+                    const panel = document.getElementById('inventory-panel');
+                    const isHidden = panel?.classList.contains('hidden');
+                    if (isHidden && document.pointerLockElement) document.exitPointerLock();
+                    panel?.classList.toggle('hidden');
+                    const crosshair = document.getElementById('crosshair');
+                    if (crosshair) crosshair.style.display = isHidden ? 'none' : 'block';
+                }
+                if (e.code === 'KeyP') this.togglePortalPanel();
+            });
+        }
+    
+        updateHUD(counts) {
+            if (this.hud.dinoCount) this.hud.dinoCount.textContent = `🦖 공룡: ${counts.items}/10`;
+            if (this.hud.rareCount) this.hud.rareCount.textContent = `⭐ 레어: ${counts.rare}/5`;
+            if (this.hud.portalCount) this.hud.portalCount.textContent = `🔮 포탈: ${counts.portal}/3`;
+        }
+    
+        showInteractionPrompt(show, text = '[E] 공룡과 대화하기') {
+            if (this.interactionPrompt) {
+                this.interactionPrompt.classList.toggle('hidden', !show);
+                const span = this.interactionPrompt.querySelector('span');
+                if (span) span.textContent = text;
+            }
+        }
+    
+        hideStartScreen() { this.startScreen?.classList.add('hidden'); }
+        showWinScreen() { this.winScreen?.classList.remove('hidden'); }
+        hideWinScreen() { this.winScreen?.classList.add('hidden'); }
+        showPortalPanel() { 
+            if (document.pointerLockElement) document.exitPointerLock();
+            const crosshair = document.getElementById('crosshair');
+            if (crosshair) crosshair.style.display = 'none';
+            this.portalPanel?.classList.remove('hidden'); 
+        }
+        hidePortalPanel() { 
+            this.portalPanel?.classList.add('hidden');
+            const crosshair = document.getElementById('crosshair');
+            if (crosshair) crosshair.style.display = 'block';
+        }
+        togglePortalPanel() { 
+            if (this.portalPanel?.classList.contains('hidden')) {
+                this.showPortalPanel();
+            } else {
+                this.hidePortalPanel();
+            }
+        }
+    
+        showAngelScreen() {
+            const angelScreen = document.getElementById('angel-screen');
+            if (angelScreen) { angelScreen.classList.remove('hidden'); setTimeout(() => angelScreen.classList.add('hidden'), 3000); }
+        }
+    }
+    
+    class Game {
+        constructor() {
+            console.log('[Game] Constructor');
+            this.canvas = document.getElementById('game-canvas');
+            if (!this.canvas) { console.error('[Game] Canvas not found!'); return; }
+            this.isRunning = false;
+            this.lastTime = 0;
+            this.init();
+        }
+    
+        init() {
+            console.log('[Game] Init');
+            try {
+                this.renderer = new Renderer(this.canvas);
+                this.scene = this.renderer.getScene();
+                this.camera = this.renderer.getCamera();
+                this.gameState = { state: 'start', isAngelMode: false, setState(s) { this.state = s; console.log('State:', s); }, enableAngelMode() { this.isAngelMode = true; this.state = 'angel'; }, reset() { this.state = 'playing'; this.isAngelMode = false; } };
+                this.ui = new UIManager();
+                this.player = new Player3D(this.scene);
+                this.playerController = new PlayerController(this.camera, this.player);
+                this.dinoManager = new DinosaurManager();
+                this.dinoUI = new DinosaurUI();
+                this.inventory = new InventorySystem();
+                this.portalSystem = new PortalSystem(this.scene);
+                this.createDino3DModels();
+                this.createEnvironment();
+                this.setupCallbacks();
+                this.setupControls();
+                this.ui.onStartGame = () => this.start();
+                this.ui.onRestart = () => this.restart();
+                this.ui.onPortalSelect = (station) => this.teleportToStation(station);
+                this.dinoUI.onQuizComplete = (isCorrect) => this.onQuizComplete(isCorrect);
+                console.log('[Game] Init complete');
+            } catch (e) { console.error('[Game] Init error:', e); }
+        }
+    
+        createDino3DModels() {
+            this.dino3DModels = [];
+            this.dinoManager.getDinosaurs().forEach((dino, i) => {
+                this.dino3DModels.push(new Dino3D(this.scene, dino.type, new THREE.Vector3(dino.position.x, dino.position.y, dino.position.z)));
+            });
+        }
+    
+        createEnvironment() {
+            new Ground3D(this.scene, 'land');
+        }
+    
+        setupCallbacks() {
+            this.inventory.onItemCollected = () => this.ui.updateHUD(this.inventory.getCounts());
+            this.inventory.onRareCreated = () => this.ui.updateHUD(this.inventory.getCounts());
+            this.inventory.onPortalCreated = () => this.ui.updateHUD(this.inventory.getCounts());
+            this.inventory.onAngelTransformation = () => this.transformToAngel();
+        }
+    
+        setupControls() {
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'KeyE' && this.gameState.state === 'playing') this.tryInteractWithDino();
+                if (e.code === 'Escape') this.dinoUI.hideDialog();
+            });
+        }
+    
+        tryInteractWithDino() {
+            if (this.gameState.state !== 'playing') return;
+            const playerPos = this.player.getPosition();
+            let nearestDino = null;
+            let minDist = 5;
+            this.dino3DModels.forEach((dino, i) => {
+                const dinoPos = dino.getPosition();
+                const dx = dinoPos.x - playerPos.x;
+                const dz = dinoPos.z - playerPos.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearestDino = this.dinoManager.getDinosaurs()[i];
+                }
+            });
+            if (nearestDino) { this.gameState.setState('quiz'); this.dinoUI.showDialog(nearestDino); }
+        }
+    
+        onQuizComplete(isCorrect) {
+            this.gameState.state = 'playing';
+            if (isCorrect) { this.inventory.addItem(); this.ui.updateHUD(this.inventory.getCounts()); }
+        }
+    
+        teleportToStation(station) {
+            if (this.inventory.portalItems.length < 3 && !this.inventory.isAngelMode) {
+                alert('포탈 아이템이 부족합니다!'); return;
+            }
+            this.ui.hidePortalPanel();
+        }
+    
+        transformToAngel() {
+            this.player.transformToAngel();
+            this.inventory.isAngelMode = true;
+            this.gameState.enableAngelMode();
+            this.ui.showAngelScreen();
+            setTimeout(() => this.ui.showWinScreen(), 3500);
+        }
+    
+        start() {
+            console.log('[Game] Starting...');
+            this.isRunning = true;
+            this.gameState.setState('playing');
+            this.animate();
+        }
+    
+        restart() {
+            this.inventory.reset();
+            this.dinoManager.resetDinosaurs();
+            this.gameState.reset();
+            this.player.setPosition(0, 1, 0);
+            this.ui.updateHUD(this.inventory.getCounts());
+            this.start();
+        }
+    
+        update(deltaTime) {
+            this.playerController.update(deltaTime);
+            this.player.update(deltaTime);
+            this.dino3DModels.forEach(dino => dino.update(deltaTime));
+            this.portalSystem.update(Date.now() * 0.001);
+            
+            const playerPos = this.player.getPosition();
+            let nearbyDino = null;
+            let minDist = 5;
+            this.dino3DModels.forEach((dino, i) => {
+                const dinoPos = dino.getPosition();
+                const dx = dinoPos.x - playerPos.x;
+                const dz = dinoPos.z - playerPos.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearbyDino = this.dinoManager.getDinosaurs()[i];
+                }
+            });
+            this.ui.showInteractionPrompt(!!nearbyDino);
+            
+            if (nearbyDino) {
+                this.ui.promptEl?.classList.remove('hidden');
+            } else {
+                this.ui.promptEl?.classList.add('hidden');
+            }
+        }
+    
+        animate() {
+            if (!this.isRunning) return;
+            requestAnimationFrame(() => this.animate());
+            const currentTime = performance.now();
+            const deltaTime = Math.min((currentTime - this.lastTime) / 1000, 0.1);
+            this.lastTime = currentTime;
+            this.update(deltaTime);
+            this.renderer.render();
+        }
+    }
+    
+    console.log('[Game] Script loaded, waiting for DOM...');
+    window.addEventListener('DOMContentLoaded', () => {
+        console.log('[Game] DOM ready, creating game...');
+        window.game = new Game();
+        console.log('[Game] Created:', window.game);
+    });
+    </script>
+</body>
+</html>
