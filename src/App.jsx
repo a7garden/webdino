@@ -1,92 +1,110 @@
-import { useEffect } from 'react'
-import { useGame } from './hooks/useGame'
-import GameCanvas from './components/GameCanvas'
-import HUD from './components/HUD'
-import Crosshair, { InteractionPrompt } from './components/UI'
-import QuizDialog from './components/QuizDialog'
-import InventoryPanel from './components/Panels'
-import { PortalPanel } from './components/Panels'
-import StartScreen from './components/StartScreen'
-import WinScreen, { AngelScreen } from './components/OverlayScreens'
-import ControlsHelp from './components/ControlsHelp'
-import ErrorBoundary from './components/ErrorBoundary'
+/**
+ * WebDino - Main App
+ * 
+ * Architecture:
+ *   MapLoader (GLB → classifyScene → NavMesh)
+ *   EntityBase (GLB → calibrate + animations + ground positioning)
+ *   Horse → EntityBase + AI movement
+ */
+
+import { useState, useEffect, useMemo } from 'react'
+import { Canvas } from '@react-three/fiber'
+import { OrbitControls, PerspectiveCamera, Environment, useGLTF } from '@react-three/drei'
+import * as THREE from 'three'
+
+import { NavMesh } from './systems/NavMesh'
+import { classifyScene } from './systems/MapLoader'
+import { Horse } from './entities/Horse'
+
+// ============================================================
+// MAP COMPONENT - loads GLB, classifies, feeds NavMesh
+// ============================================================
+
+function Map({ mapPath, onReady }) {
+  const { scene } = useGLTF(mapPath)
+  
+  useEffect(() => {
+    if (scene) {
+      const classified = classifyScene(scene)
+      onReady(classified)
+    }
+  }, [scene, mapPath, onReady])
+  
+  return <primitive object={scene} />
+}
+
+// ============================================================
+// WORLD - orchestrates map + entities
+// ============================================================
+
+function World() {
+  const [mapData, setMapData] = useState(null)
+  const navMesh = useMemo(() => new NavMesh(), [])
+  
+  // Feed classified meshes into NavMesh when map loads
+  useEffect(() => {
+    if (mapData) {
+      navMesh.build(mapData)
+      console.log('[World] NavMesh built')
+    }
+  }, [mapData, navMesh])
+  
+  const ready = mapData && mapData.grounds.length > 0
+  
+  return (
+    <>
+      {/* Lighting */}
+      <ambientLight intensity={0.6} />
+      <directionalLight
+        position={[50, 80, 30]}
+        intensity={1.5}
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-far={200}
+        shadow-camera-left={-50}
+        shadow-camera-right={50}
+        shadow-camera-top={50}
+        shadow-camera-bottom={-50}
+      />
+      <hemisphereLight args={['#87ceeb', '#3a5f0b', 0.4]} />
+      
+      {/* Map */}
+      <Map mapPath="./assets/Map.glb" onReady={setMapData} />
+      
+      {/* Entities (only when navmesh is ready) */}
+      {ready && <Horse navMesh={navMesh} />}
+      
+      {/* Environment */}
+      <Environment preset="forest" />
+    </>
+  )
+}
+
+// ============================================================
+// SCENE WRAPPER (camera + controls)
+// ============================================================
+
+function Scene() {
+  return (
+    <>
+      <PerspectiveCamera makeDefault position={[15, 15, 20]} fov={55} />
+      <OrbitControls enableDamping dampingFactor={0.05} />
+      <World />
+    </>
+  )
+}
+
+// ============================================================
+// APP ROOT
+// ============================================================
 
 function App() {
-  const {
-    gameState,
-    showQuiz,
-    selectedDino,
-    showInventory,
-    showPortal,
-    showAngelScreen,
-    showWinScreen,
-    startGame,
-    restart,
-    setShowInventory,
-    setShowPortal,
-    eulerRef,
-    nearbyDino
-  } = useGame()
-
-  console.log('[App] render, gameState:', gameState)
-
-  useEffect(() => {
-    if (gameState !== 'playing' && gameState !== 'quiz' && gameState !== 'angel') return
-
-    const lookSpeed = 0.002
-
-    const handleMouseMove = (e) => {
-      if (document.pointerLockElement) {
-        eulerRef.current.y -= e.movementX * lookSpeed
-        eulerRef.current.x -= e.movementY * lookSpeed
-        eulerRef.current.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, eulerRef.current.x))
-      }
-    }
-
-    const handleClick = () => {
-      document.body.requestPointerLock()
-    }
-
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('click', handleClick)
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('click', handleClick)
-    }
-  }, [gameState, eulerRef])
-
   return (
-    <ErrorBoundary>
-      <>
-        {gameState === 'start' && <StartScreen onStart={startGame} />}
-
-        <GameCanvas />
-
-        {gameState !== 'start' && (
-          <>
-            <HUD />
-            <Crosshair />
-            <InteractionPrompt show={gameState === 'playing' && !!nearbyDino} />
-
-            {showQuiz && selectedDino && (
-              <QuizDialog
-                dino={selectedDino}
-                onClose={() => setShowQuiz(false)}
-              />
-            )}
-
-            {showInventory && <InventoryPanel onClose={() => setShowInventory(false)} />}
-            {showPortal && <PortalPanel onClose={() => setShowPortal(false)} onSelectStation={() => {}} />}
-
-            <AngelScreen show={showAngelScreen} />
-            <WinScreen onRestart={restart} show={showWinScreen} />
-
-            <ControlsHelp />
-          </>
-        )}
-      </>
-    </ErrorBoundary>
+    <div style={{ width: '100vw', height: '100vh', background: '#1a1a1a' }}>
+      <Canvas shadows camera={{ position: [15, 15, 20], fov: 55 }}>
+        <Scene />
+      </Canvas>
+    </div>
   )
 }
 
